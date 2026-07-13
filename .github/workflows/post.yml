@@ -1,0 +1,46 @@
+name: Post to Threads
+
+on:
+  schedule:
+    - cron: "0 22 * * *"  # 7:00 JST
+    - cron: "0 3 * * *"   # 12:00 JST
+    - cron: "0 9 * * *"   # 18:00 JST
+    - cron: "0 12 * * *"  # 21:00 JST
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "手動実行時に投稿するグループ (7 / 12 / 18 / 21)"
+        required: true
+        default: "7"
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Resolve post group from schedule
+        id: group
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 22 * * *") echo "value=7" >> "$GITHUB_OUTPUT" ;;
+            "0 3 * * *")  echo "value=12" >> "$GITHUB_OUTPUT" ;;
+            "0 9 * * *")  echo "value=18" >> "$GITHUB_OUTPUT" ;;
+            "0 12 * * *") echo "value=21" >> "$GITHUB_OUTPUT" ;;
+            *) echo "value=${{ github.event.inputs.group }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Post
+        env:
+          POST_GROUP: ${{ steps.group.outputs.value }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        run: python scripts/post_to_threads.py
