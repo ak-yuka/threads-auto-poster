@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       group:
-        description: "手動実行時に投稿するグループ (7 / 12 / 18 / 21)"
+        description: "手動実行時に投稿する時間帯スロット (7 / 12 / 18 / 21)"
         required: true
         default: "7"
 
