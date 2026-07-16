@@ -2,6 +2,7 @@ import json
 import os
 import random
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 import gspread
@@ -18,6 +19,25 @@ HEADER_ROWS = 1
 SLOT_ORDER = ["7", "12", "18", "21"]
 JST = timezone(timedelta(hours=9))
 
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+RETRY_ATTEMPTS = 4
+RETRY_BASE_DELAY_SECONDS = 2
+
+
+def with_retry(fn):
+    """Google Sheets APIの一時的なエラー(503など)に対して指数バックオフでリトライする"""
+    last_exc = None
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            return fn()
+        except gspread.exceptions.APIError as exc:
+            status = exc.response.status_code
+            if status not in RETRYABLE_STATUS_CODES or attempt == RETRY_ATTEMPTS - 1:
+                raise
+            last_exc = exc
+            time.sleep(RETRY_BASE_DELAY_SECONDS * (2**attempt))
+    raise last_exc
+
 
 def jst_now():
     return datetime.now(JST)
@@ -31,7 +51,7 @@ def get_worksheet(sheet_id):
     creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
     creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
     gc = gspread.authorize(creds)
-    return gc.open_by_key(sheet_id).sheet1
+    return with_retry(lambda: gc.open_by_key(sheet_id).sheet1)
 
 
 def determine_theme(rows, slot):
@@ -60,7 +80,7 @@ def pick_text(ws, rows, theme):
 
     if not unposted:
         for n, _ in theme_rows:
-            ws.update_cell(n, COL_POSTED, "FALSE")
+            with_retry(lambda n=n: ws.update_cell(n, COL_POSTED, "FALSE"))
         unposted = theme_rows
 
     row_number, row = random.choice(unposted)
@@ -68,5 +88,5 @@ def pick_text(ws, rows, theme):
 
 
 def mark_posted(ws, row_number):
-    ws.update_cell(row_number, COL_POSTED, "TRUE")
-    ws.update_cell(row_number, COL_POSTED_AT, jst_now().isoformat())
+    with_retry(lambda: ws.update_cell(row_number, COL_POSTED, "TRUE"))
+    with_retry(lambda: ws.update_cell(row_number, COL_POSTED_AT, jst_now().isoformat()))
