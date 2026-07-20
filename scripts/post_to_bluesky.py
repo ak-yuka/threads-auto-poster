@@ -2,6 +2,7 @@ import os
 import re
 from datetime import timezone
 
+import regex
 import requests
 
 from sheet_utils import HEADER_ROWS, determine_theme, get_worksheet, jst_now, mark_posted, pick_text
@@ -10,6 +11,30 @@ BLUESKY_PDS = "https://bsky.social"
 
 URL_RE = re.compile(r"https?://[^\s]+")
 YOUTUBE_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)")
+
+BLUESKY_MAX_GRAPHEMES = 300
+BLUESKY_MAX_BYTES = 3000
+ELLIPSIS = "…"
+
+
+def truncate_for_bluesky(text):
+    """Bluesky投稿本文の上限(300グラフェム/3000バイト)を超える場合に末尾を切り詰める"""
+    graphemes = regex.findall(r"\X", text)
+    if len(graphemes) <= BLUESKY_MAX_GRAPHEMES and len(text.encode("utf-8")) <= BLUESKY_MAX_BYTES:
+        return text
+
+    limit = min(len(graphemes), BLUESKY_MAX_GRAPHEMES) - len(ELLIPSIS)
+    truncated = graphemes[:limit]
+    while len(("".join(truncated) + ELLIPSIS).encode("utf-8")) > BLUESKY_MAX_BYTES:
+        truncated = truncated[:-1]
+    return "".join(truncated) + ELLIPSIS
+
+
+def raise_with_body(response):
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as exc:
+        raise requests.exceptions.HTTPError(f"{exc}: {response.text}", response=response) from None
 
 
 def build_facets(text):
@@ -32,11 +57,11 @@ def build_youtube_embed(access_jwt, url):
         params={"url": url, "format": "json"},
         timeout=15,
     )
-    oembed.raise_for_status()
+    raise_with_body(oembed)
     meta = oembed.json()
 
     thumb = requests.get(meta["thumbnail_url"], timeout=15)
-    thumb.raise_for_status()
+    raise_with_body(thumb)
     upload = requests.post(
         f"{BLUESKY_PDS}/xrpc/com.atproto.repo.uploadBlob",
         headers={
@@ -46,7 +71,7 @@ def build_youtube_embed(access_jwt, url):
         data=thumb.content,
         timeout=30,
     )
-    upload.raise_for_status()
+    raise_with_body(upload)
 
     return {
         "$type": "app.bsky.embed.external",
@@ -63,12 +88,17 @@ def post_to_bluesky(text):
     handle = os.environ["BLUESKY_HANDLE"]
     app_password = os.environ["BLUESKY_APP_PASSWORD"]
 
+    truncated_text = truncate_for_bluesky(text)
+    if truncated_text != text:
+        print(f"投稿本文が上限({BLUESKY_MAX_GRAPHEMES}グラフェム)を超えていたため切り詰めました")
+    text = truncated_text
+
     session = requests.post(
         f"{BLUESKY_PDS}/xrpc/com.atproto.server.createSession",
         json={"identifier": handle, "password": app_password},
         timeout=30,
     )
-    session.raise_for_status()
+    raise_with_body(session)
     session_data = session.json()
     access_jwt = session_data["accessJwt"]
 
@@ -99,7 +129,7 @@ def post_to_bluesky(text):
         },
         timeout=30,
     )
-    response.raise_for_status()
+    raise_with_body(response)
     return response.json()
 
 
