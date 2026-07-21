@@ -7,6 +7,8 @@ from sheet_utils import HEADER_ROWS, determine_theme, get_worksheet, mark_posted
 
 CONTAINER_POLL_INTERVAL_SECONDS = 5
 CONTAINER_POLL_TIMEOUT_SECONDS = 60
+PUBLISH_RETRY_ATTEMPTS = 3
+PUBLISH_RETRY_DELAY_SECONDS = 5
 
 
 def raise_with_body(response):
@@ -39,6 +41,24 @@ def wait_until_container_ready(creation_id, token):
         time.sleep(CONTAINER_POLL_INTERVAL_SECONDS)
 
 
+def publish_container(user_id, creation_id, token):
+    """ステータスがFINISHEDになった直後でも、Threads側の反映遅延により
+    publishが一時的にMedia Not Found(400)になることがあるためリトライする"""
+    for attempt in range(PUBLISH_RETRY_ATTEMPTS):
+        publish = requests.post(
+            f"https://graph.threads.net/v1.0/{user_id}/threads_publish",
+            data={"creation_id": creation_id, "access_token": token},
+            timeout=30,
+        )
+        try:
+            raise_with_body(publish)
+            return publish.json()
+        except requests.exceptions.HTTPError:
+            if attempt == PUBLISH_RETRY_ATTEMPTS - 1:
+                raise
+            time.sleep(PUBLISH_RETRY_DELAY_SECONDS)
+
+
 def post_to_threads(text):
     user_id = os.environ["THREADS_USER_ID"]
     token = os.environ["THREADS_ACCESS_TOKEN"]
@@ -53,13 +73,7 @@ def post_to_threads(text):
 
     wait_until_container_ready(creation_id, token)
 
-    publish = requests.post(
-        f"https://graph.threads.net/v1.0/{user_id}/threads_publish",
-        data={"creation_id": creation_id, "access_token": token},
-        timeout=30,
-    )
-    raise_with_body(publish)
-    return publish.json()
+    return publish_container(user_id, creation_id, token)
 
 
 def main():
