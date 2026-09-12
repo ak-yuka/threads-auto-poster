@@ -55,9 +55,9 @@ Threadsへ自動投稿する。
    **長期アクセストークン(60日)** に交換する
 5. `GET https://graph.threads.net/v1.0/me?fields=id&access_token=<トークン>`
    を叩いて `THREADS_USER_ID` を取得
-6. 長期トークンは60日で失効するので、期限が切れる前に
-   `GET /refresh_access_token` で更新が必要(このリポジトリでは未自動化。
-   必要なら追加で実装する)
+6. 長期トークンは60日で失効するが、このリポジトリには自動更新の仕組み
+   (`.github/workflows/refresh-threads-token.yml`)があるので、
+   下記3章の `GH_SECRETS_PAT` を設定しておけば手動更新は不要
 
 ### 3. GitHubリポジトリの準備
 
@@ -71,9 +71,28 @@ Threadsへ自動投稿する。
    | `THREADS_USER_ID` | ThreadsのユーザーID |
    | `THREADS_ACCESS_TOKEN` | Threadsの長期アクセストークン |
    | `GOOGLE_CREDENTIALS_JSON` | サービスアカウントJSONファイルの中身をそのまま貼り付け |
+   | `GH_SECRETS_PAT` | このリポジトリのSecretsを更新できるGitHub Personal Access Token(下記参照) |
 
 3. Actionsタブ →「Post to Threads」→「Run workflow」で
    手動実行してテストする(group欄に `7`/`12`/`18`/`21` のいずれかを入力)
+
+### 4. トークン自動更新の準備(`GH_SECRETS_PAT`)
+
+`.github/workflows/refresh-threads-token.yml` が毎週月曜に
+`THREADS_ACCESS_TOKEN` を自動更新する。このワークフローがGitHub Secretsを
+書き換えられるよう、以下のいずれかの方法でPersonal Access Tokenを発行し、
+`GH_SECRETS_PAT` として登録する。
+
+- **Fine-grained PAT**(推奨): https://github.com/settings/personal-access-tokens/new
+  で発行。対象リポジトリをこのリポジトリに限定し、Repository permissions の
+  **Secrets: Read and write** を付与する
+- **Classic PAT**: `repo` スコープを付与して発行
+  (private repoのSecrets更新には `repo` スコープが必要)
+
+このトークンが未設定、または期限切れの場合、`refresh-threads-token`
+ワークフローは失敗するが、投稿本体(`post.yml`)には影響しない。
+その場合はActionsの失敗通知を確認し、`THREADS_ACCESS_TOKEN` を
+2章の手順で手動更新すること。
 
 ## 投稿スケジュール
 
