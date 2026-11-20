@@ -5,6 +5,9 @@ on:
     - cron: "0 0 * * 1"  # 毎週月曜 0:00 UTC (9:00 JST)
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -23,3 +26,18 @@ jobs:
           GH_SECRETS_PAT: ${{ secrets.GH_SECRETS_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python scripts/refresh_threads_token.py
+
+      - name: Keep repository active
+        # GitHubはリポジトリへのpushが60日間ないと、スケジュール実行のワークフローを
+        # 自動的に無効化してしまう。このリポジトリはコード変更がほとんど発生しないため、
+        # 毎週このコミットを作ることでpushを発生させ、自動無効化を防ぐ。
+        if: always()
+        run: |
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/KEEPALIVE
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/KEEPALIVE
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: リポジトリを活動中に保つ(自動無効化防止)"
+            git push
+          fi

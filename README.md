@@ -107,6 +107,27 @@ Threadsへ自動投稿する。
 
 GitHub Actionsのscheduleは数分〜数十分の遅延が発生することがある。
 
+## 「60日間activityがない」によるワークフロー自動停止について
+
+GitHubは、リポジトリへのpushが60日間ないと、スケジュール実行(`schedule`)
+のワークフローを自動的に無効化する。このリポジトリはコード変更がほとんど
+発生しないため、何もしないと60日ごとに `post.yml` と
+`refresh-threads-token.yml` の両方が停止してしまう。
+
+これを防ぐため、`refresh-threads-token.yml`(毎週実行)の最後に
+`.github/KEEPALIVE` というファイルのタイムスタンプを更新してコミット・push
+するステップを追加してある。これにより毎週1回は必ずpushが発生し、
+60日の無活動期間に達することがなくなる。
+
+**もし「This scheduled workflow is disabled because there hasn't been any
+workflow activity in this repository for more than 60 days.」という表示が
+出ていた場合**は、以下の手順で手動復旧が必要:
+
+1. Actionsタブ → 該当ワークフロー(`Post to Threads` / `Refresh Threads Token`)を開く
+2. 表示されている「**Enable workflow**」ボタンをクリック
+
+一度有効化すれば、以降は上記のKEEPALIVE機構により自動的に維持される。
+
 ## ローカルでのテスト
 
 ```
