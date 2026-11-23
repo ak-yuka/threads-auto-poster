@@ -3,7 +3,7 @@ import time
 
 import requests
 
-from sheet_utils import HEADER_ROWS, determine_theme, get_worksheet, mark_posted, pick_text
+from sheet_utils import HEADER_ROWS, determine_theme, get_worksheet, mark_posted, pick_text, with_retry
 
 CONTAINER_POLL_INTERVAL_SECONDS = 5
 CONTAINER_POLL_TIMEOUT_SECONDS = 60
@@ -79,7 +79,7 @@ def post_to_threads(text):
 def main():
     slot = os.environ["POST_GROUP"]
     ws = get_worksheet(os.environ["SHEET_ID"])
-    rows = ws.get_all_values()[HEADER_ROWS:]
+    rows = with_retry(ws.get_all_values)[HEADER_ROWS:]
 
     theme = determine_theme(rows, slot)
     row_number, text = pick_text(ws, rows, theme)
